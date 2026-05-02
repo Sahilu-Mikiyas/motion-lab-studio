@@ -127,17 +127,6 @@ export default function Auth() {
             </button>
           </form>
 
-          <div className="my-5 flex items-center gap-3 text-[10px] font-mono uppercase tracking-[0.25em] text-muted-foreground">
-            <div className="h-px flex-1 bg-border" /> or <div className="h-px flex-1 bg-border" />
-          </div>
-
-          <button
-            onClick={handleGoogle} disabled={busy}
-            className="w-full border border-border rounded-md py-2.5 text-sm hover:bg-secondary disabled:opacity-50"
-          >
-            Continue with Google
-          </button>
-
           <div className="mt-6 text-sm text-muted-foreground text-center">
             {mode === 'signin' ? "No account?" : 'Already have an account?'}{' '}
             <button

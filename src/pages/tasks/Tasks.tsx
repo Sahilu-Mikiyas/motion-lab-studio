@@ -1,147 +1,130 @@
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useState } from 'react';
 import { Header } from '@/components/layout/Header';
-import { Card } from '@/components/ui/studio-card';
-import { Clock, Film, MessageSquare, Upload, CheckCircle2, Circle } from 'lucide-react';
-import { useState } from 'react';
-import { fadeUp, stagger } from '@/lib/motion';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { Upload } from 'lucide-react';
 
-const tasks = [
-  { id: 1, title: 'Sci-Fi Title Sequence — Vol. II', client: 'NEON / Studio', tag: 'Motion', status: 'In progress', due: '2d 4h', progress: 64 },
-  { id: 2, title: 'Brand Logo Reveal — Apex Audio', client: 'Apex Audio', tag: 'Branding', status: 'In progress', due: '5d 12h', progress: 28 },
-  { id: 3, title: 'UI Microinteractions Pack', client: 'Internal Lab', tag: 'UI/UX', status: 'Review', due: '1d 6h', progress: 89 },
-  { id: 4, title: '3D Product Loop — Nova Watch', client: 'Nova', tag: '3D', status: 'Queued', due: '7d', progress: 0 },
-];
-
-const checklist = [
-  { id: 1, label: 'Reference board approved', done: true },
-  { id: 2, label: 'Storyboard v2 uploaded', done: true },
-  { id: 3, label: 'Animation pass — Scene 1–3', done: true },
-  { id: 4, label: 'Sound design draft', done: false },
-  { id: 5, label: 'Final color grade', done: false },
-];
+type Task = { id: string; title: string; brief: string; payout: number; required_level: number; lesson_id: string | null };
+type Sub = { id: string; task_id: string; status: string; feedback: string | null; created_at: string };
 
 export default function Tasks() {
-  const [active, setActive] = useState(tasks[0]);
+  const { user, profile } = useAuth();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [subs, setSubs] = useState<Sub[]>([]);
+  const [active, setActive] = useState<Task | null>(null);
+  const [notes, setNotes] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = async () => {
+    if (!user) return;
+    const [{ data: t }, { data: s }] = await Promise.all([
+      supabase.from('tasks').select('*').order('required_level'),
+      supabase.from('submissions').select('id, task_id, status, feedback, created_at').eq('user_id', user.id),
+    ]);
+    setTasks((t as Task[]) || []);
+    setSubs((s as Sub[]) || []);
+  };
+  useEffect(() => { load(); }, [user]);
+
+  const subFor = (tid: string) => subs.find((s) => s.task_id === tid);
+
+  const submit = async () => {
+    if (!active || !user) return;
+    setBusy(true);
+    try {
+      let filePath: string | null = null;
+      if (file) {
+        filePath = `${user.id}/${active.id}-${Date.now()}-${file.name}`;
+        const { error } = await supabase.storage.from('submissions').upload(filePath, file, { upsert: true });
+        if (error) throw error;
+      }
+      const existing = subFor(active.id);
+      if (existing) {
+        const { error } = await supabase.from('submissions').update({
+          file_url: filePath ?? undefined,
+          notes,
+          status: 'submitted',
+        }).eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('submissions').insert({
+          user_id: user.id, task_id: active.id, file_url: filePath, notes, status: 'submitted',
+        });
+        if (error) throw error;
+      }
+      toast.success('Submission sent');
+      setNotes(''); setFile(null);
+      await load();
+    } catch (e: any) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <>
-      <Header title="Tasks" subtitle="Your live production queue" />
-      <div className="p-6 lg:p-10 grid lg:grid-cols-[380px_1fr] gap-6">
-        {/* Task list */}
-        <motion.div variants={stagger(0.04)} initial="initial" animate="animate" className="space-y-3">
+      <Header title="Tasks" subtitle="Submit work to progress" />
+      <div className="p-6 lg:p-10 grid lg:grid-cols-[1fr_400px] gap-6">
+        <div className="border border-border rounded-md divide-y divide-border">
+          {tasks.length === 0 && <div className="p-6 text-sm text-muted-foreground">No tasks yet.</div>}
           {tasks.map((t) => {
-            const isActive = active.id === t.id;
+            const s = subFor(t.id);
+            const locked = (profile?.assigned_level ?? 0) < t.required_level;
             return (
-              <motion.button
-                key={t.id} variants={fadeUp}
-                onClick={() => setActive(t)}
-                whileHover={{ x: 2 }}
-                className={`text-left w-full p-4 rounded-xl border transition-colors surface ${
-                  isActive ? 'border-primary/60' : 'border-border hover:border-primary/30'
-                }`}
+              <button
+                key={t.id}
+                disabled={locked}
+                onClick={() => { setActive(t); setNotes(s ? '' : ''); setFile(null); }}
+                className={`w-full text-left p-5 hover:bg-secondary/50 transition-colors ${active?.id === t.id ? 'bg-secondary/60' : ''} ${locked ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-primary">{t.tag}</span>
-                  <span className="text-[10px] text-muted-foreground flex items-center gap-1"><Clock className="h-3 w-3" />{t.due}</span>
-                </div>
-                <div className="font-medium mt-1.5">{t.title}</div>
-                <div className="text-xs text-muted-foreground">{t.client}</div>
-                <div className="mt-3 flex items-center gap-3">
-                  <div className="flex-1 h-1 rounded-full bg-secondary overflow-hidden">
-                    <div className="h-full bg-gradient-gold" style={{ width: `${t.progress}%` }} />
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Level {t.required_level} {t.payout > 0 && `· $${Number(t.payout).toFixed(2)}`}</div>
+                    <div className="text-sm mt-1 truncate">{t.title}</div>
+                    <div className="text-xs text-muted-foreground mt-1 line-clamp-1">{t.brief}</div>
                   </div>
-                  <span className="text-[10px] font-mono text-muted-foreground">{t.status}</span>
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground shrink-0">{s?.status || 'pending'}</span>
                 </div>
-              </motion.button>
+              </button>
             );
           })}
-        </motion.div>
+        </div>
 
-        {/* Task viewer */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={active.id}
-            initial={{ scale: 0.98, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.98, opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="space-y-6"
-          >
-            <Card hover={false} className="p-0">
-              <div className="aspect-video relative bg-black overflow-hidden rounded-t-xl">
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(43_65%_53%/0.18),transparent_70%)]" />
-                <div className="absolute inset-0 grid place-items-center">
-                  <motion.div animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 3, repeat: Infinity }}
-                    className="h-16 w-16 rounded-full bg-primary/20 grid place-items-center backdrop-blur">
-                    <Film className="h-7 w-7 text-primary" />
-                  </motion.div>
+        <aside className="border border-border rounded-md p-5 h-fit sticky top-20">
+          {!active && <div className="text-sm text-muted-foreground">Select a task to begin.</div>}
+          {active && (
+            <>
+              <div className="text-[10px] font-mono uppercase tracking-[0.25em] text-muted-foreground">Task</div>
+              <div className="font-display text-xl mt-1">{active.title}</div>
+              <p className="text-sm text-muted-foreground mt-3">{active.brief}</p>
+
+              {subFor(active.id)?.feedback && (
+                <div className="mt-4 border border-border rounded-md p-3 text-sm">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">Mentor feedback</div>
+                  <div className="mt-1">{subFor(active.id)?.feedback}</div>
                 </div>
-                <div className="absolute bottom-0 left-0 right-0 p-4 flex items-center gap-3 bg-gradient-to-t from-black/80 to-transparent">
-                  <div className="flex-1 h-1 rounded-full bg-white/10 overflow-hidden">
-                    <div className="h-full bg-gradient-gold" style={{ width: '38%' }} />
-                  </div>
-                  <span className="text-[11px] font-mono text-white/70">00:38 / 01:42</span>
-                </div>
+              )}
+
+              <div className="mt-4 space-y-3">
+                <textarea
+                  value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} placeholder="Notes (optional)"
+                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                />
+                <label className="flex items-center gap-2 border border-dashed border-border rounded-md px-3 py-2 text-sm cursor-pointer hover:bg-secondary">
+                  <Upload className="h-4 w-4" />
+                  <span className="truncate">{file?.name || 'Attach file'}</span>
+                  <input type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                </label>
+                <button onClick={submit} disabled={busy} className="w-full bg-foreground text-background rounded-md py-2 text-sm disabled:opacity-50">
+                  {busy ? 'Submitting…' : 'Submit'}
+                </button>
               </div>
-              <div className="p-6">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <div className="text-[10px] font-mono uppercase tracking-wider text-primary">{active.tag} · {active.client}</div>
-                    <h2 className="font-display text-3xl mt-1">{active.title}</h2>
-                  </div>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }}
-                    className="bg-gradient-gold text-primary-foreground px-4 py-2.5 rounded-lg text-sm font-medium flex items-center gap-2 glow-gold"
-                  >
-                    <Upload className="h-4 w-4" /> Submit deliverable
-                  </motion.button>
-                </div>
-                <p className="text-muted-foreground mt-4 max-w-2xl text-sm leading-relaxed">
-                  Cinematic 90s sci-fi inspired opener. Establish tension via slow zooms and chromatic aberration.
-                  Deliver 1920×1080 ProRes 4444, 24fps. Include alternate end-card without logo lockup.
-                </p>
-              </div>
-            </Card>
-
-            <div className="grid md:grid-cols-2 gap-6">
-              <Card>
-                <div className="text-xs uppercase tracking-widest text-muted-foreground">Checklist</div>
-                <div className="font-display text-xl mb-4">Production milestones</div>
-                <ul className="space-y-2">
-                  {checklist.map((c) => (
-                    <li key={c.id} className="flex items-center gap-3 text-sm">
-                      {c.done
-                        ? <CheckCircle2 className="h-4 w-4 text-primary" />
-                        : <Circle className="h-4 w-4 text-muted-foreground" />}
-                      <span className={c.done ? 'text-muted-foreground line-through' : ''}>{c.label}</span>
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-
-              <Card>
-                <div className="text-xs uppercase tracking-widest text-muted-foreground">Feedback</div>
-                <div className="font-display text-xl mb-4">Director thread</div>
-                <div className="space-y-3">
-                  {[
-                    { who: 'Mara K.', txt: 'Love the pacing in scene 2. Push contrast a touch.' },
-                    { who: 'You', txt: 'On it — pushing grade and re-rendering tonight.' },
-                  ].map((m, i) => (
-                    <div key={i} className="p-3 rounded-lg bg-secondary/60 border border-border">
-                      <div className="text-[11px] font-mono text-primary">{m.who}</div>
-                      <div className="text-sm mt-1">{m.txt}</div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-3 flex items-center gap-2">
-                  <input className="flex-1 bg-input border border-border focus:border-primary outline-none rounded-lg px-3 py-2 text-sm" placeholder="Reply…" />
-                  <button className="h-9 w-9 grid place-items-center rounded-lg bg-gradient-gold text-primary-foreground">
-                    <MessageSquare className="h-4 w-4" />
-                  </button>
-                </div>
-              </Card>
-            </div>
-          </motion.div>
-        </AnimatePresence>
+            </>
+          )}
+        </aside>
       </div>
     </>
   );

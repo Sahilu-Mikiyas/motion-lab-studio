@@ -1,3 +1,3 @@
-import Dashboard from "./dashboard/Dashboard";
-const Index = Dashboard;
+import Landing from "./Landing";
+const Index = Landing;
 export default Index;

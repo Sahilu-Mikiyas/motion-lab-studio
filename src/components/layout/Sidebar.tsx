@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { Film, GraduationCap, LayoutDashboard, ListChecks, Lock, ShieldCheck, User, Wallet } from 'lucide-react';
+import { Film, GraduationCap, LayoutDashboard, ListChecks, Lock, Mail, ShieldCheck, User, Wallet } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import logo from '@/assets/furii-logo.png';
 
@@ -9,6 +9,7 @@ const items = [
   { to: '/learning', label: 'Learning', icon: GraduationCap },
   { to: '/payments', label: 'Payments', icon: Wallet, paidOnly: true },
   { to: '/profile', label: 'Profile', icon: User },
+  { to: '/contact', label: 'Contact', icon: Mail },
 ];
 
 export const Sidebar = () => {

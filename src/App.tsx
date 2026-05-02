@@ -17,6 +17,7 @@ import Tasks from "./pages/tasks/Tasks";
 import Learning from "./pages/learning/Learning";
 import Profile from "./pages/profile/Profile";
 import Payments from "./pages/payments/Payments";
+import Contact from "./pages/Contact";
 import Admin from "./pages/admin/Admin";
 import NotFound from "./pages/NotFound.tsx";
 
@@ -52,6 +53,7 @@ const App = () => (
               <Route path="/learning" element={<Learning />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/payments" element={<Payments />} />
+              <Route path="/contact" element={<Contact />} />
             </Route>
 
             <Route path="/admin" element={<ProtectedRoute requireAdmin><Admin /></ProtectedRoute>} />

@@ -54,9 +54,7 @@ const App = () => (
               <Route path="/payments" element={<Payments />} />
             </Route>
 
-            <Route element={<ProtectedRoute requireAdmin><MainLayout /></ProtectedRoute>}>
-              <Route path="/admin" element={<Admin />} />
-            </Route>
+            <Route path="/admin" element={<ProtectedRoute requireAdmin><Admin /></ProtectedRoute>} />
 
             <Route path="/index" element={<Navigate to="/" replace />} />
             <Route path="*" element={<NotFound />} />

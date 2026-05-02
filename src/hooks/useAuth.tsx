@@ -52,12 +52,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(s);
       setUser(s?.user ?? null);
       if (s?.user) {
-        setTimeout(() => loadExtras(s.user.id).finally(() => setLoading(false)), 0);
+        setTimeout(() => loadExtras(s.user.id), 0);
       } else {
         setProfile(null);
         setIsAdmin(false);
-        setLoading(false);
       }
+    });
+
+    supabase.auth.getSession().then(({ data: { session: s } }) => {
+      setSession(s);
+      setUser(s?.user ?? null);
+      if (s?.user) loadExtras(s.user.id).finally(() => setLoading(false));
+      else setLoading(false);
     });
 
     return () => sub.subscription.unsubscribe();

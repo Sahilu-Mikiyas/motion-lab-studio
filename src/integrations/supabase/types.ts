@@ -14,16 +14,332 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      applications: {
+        Row: {
+          assigned_level: number | null
+          country: string | null
+          cover_letter: string
+          created_at: string
+          cv_url: string | null
+          full_name: string
+          id: string
+          phone: string | null
+          qualifications: string
+          questionnaire: Json
+          reviewer_notes: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          assigned_level?: number | null
+          country?: string | null
+          cover_letter: string
+          created_at?: string
+          cv_url?: string | null
+          full_name: string
+          id?: string
+          phone?: string | null
+          qualifications: string
+          questionnaire?: Json
+          reviewer_notes?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          assigned_level?: number | null
+          country?: string | null
+          cover_letter?: string
+          created_at?: string
+          cv_url?: string | null
+          full_name?: string
+          id?: string
+          phone?: string | null
+          qualifications?: string
+          questionnaire?: Json
+          reviewer_notes?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      legal_documents: {
+        Row: {
+          agreement_signed_at: string
+          agreement_version: string
+          created_at: string
+          id: string
+          id_document_url: string
+          ip_address: string | null
+          signed_name: string
+          user_id: string
+        }
+        Insert: {
+          agreement_signed_at?: string
+          agreement_version?: string
+          created_at?: string
+          id?: string
+          id_document_url: string
+          ip_address?: string | null
+          signed_name: string
+          user_id: string
+        }
+        Update: {
+          agreement_signed_at?: string
+          agreement_version?: string
+          created_at?: string
+          id?: string
+          id_document_url?: string
+          ip_address?: string | null
+          signed_name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      lesson_progress: {
+        Row: {
+          completed: boolean
+          completed_at: string | null
+          id: string
+          lesson_id: string
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean
+          completed_at?: string | null
+          id?: string
+          lesson_id: string
+          user_id: string
+        }
+        Update: {
+          completed?: boolean
+          completed_at?: string | null
+          id?: string
+          lesson_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lesson_progress_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lessons: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          module: string | null
+          required_level: number
+          sort_order: number
+          title: string
+          youtube_url: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          module?: string | null
+          required_level?: number
+          sort_order?: number
+          title: string
+          youtube_url?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          module?: string | null
+          required_level?: number
+          sort_order?: number
+          title?: string
+          youtube_url?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          assigned_level: number
+          avatar_url: string | null
+          bio: string | null
+          created_at: string
+          display_name: string | null
+          email: string
+          full_name: string | null
+          id: string
+          onboarding_status: Database["public"]["Enums"]["onboarding_status"]
+          paid_status: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          assigned_level?: number
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string
+          display_name?: string | null
+          email: string
+          full_name?: string | null
+          id?: string
+          onboarding_status?: Database["public"]["Enums"]["onboarding_status"]
+          paid_status?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          assigned_level?: number
+          avatar_url?: string | null
+          bio?: string | null
+          created_at?: string
+          display_name?: string | null
+          email?: string
+          full_name?: string | null
+          id?: string
+          onboarding_status?: Database["public"]["Enums"]["onboarding_status"]
+          paid_status?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      submissions: {
+        Row: {
+          created_at: string
+          feedback: string | null
+          file_url: string | null
+          id: string
+          notes: string | null
+          payout: number
+          status: Database["public"]["Enums"]["submission_status"]
+          task_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          feedback?: string | null
+          file_url?: string | null
+          id?: string
+          notes?: string | null
+          payout?: number
+          status?: Database["public"]["Enums"]["submission_status"]
+          task_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          feedback?: string | null
+          file_url?: string | null
+          id?: string
+          notes?: string | null
+          payout?: number
+          status?: Database["public"]["Enums"]["submission_status"]
+          task_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "submissions_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tasks: {
+        Row: {
+          brief: string
+          created_at: string
+          id: string
+          is_paid: boolean
+          lesson_id: string | null
+          payout: number
+          required_level: number
+          title: string
+        }
+        Insert: {
+          brief: string
+          created_at?: string
+          id?: string
+          is_paid?: boolean
+          lesson_id?: string | null
+          payout?: number
+          required_level?: number
+          title: string
+        }
+        Update: {
+          brief?: string
+          created_at?: string
+          id?: string
+          is_paid?: boolean
+          lesson_id?: string | null
+          payout?: number
+          required_level?: number
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: false
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "creator"
+      onboarding_status:
+        | "not_started"
+        | "application_submitted"
+        | "under_review"
+        | "legal_pending"
+        | "complete"
+        | "rejected"
+      submission_status: "pending" | "submitted" | "approved" | "needs_revision"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +466,17 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "creator"],
+      onboarding_status: [
+        "not_started",
+        "application_submitted",
+        "under_review",
+        "legal_pending",
+        "complete",
+        "rejected",
+      ],
+      submission_status: ["pending", "submitted", "approved", "needs_revision"],
+    },
   },
 } as const

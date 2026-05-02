@@ -10,6 +10,8 @@ import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
 import Onboarding from "./pages/Onboarding";
 import Welcome from "./pages/Welcome";
+import Pending from "./pages/Pending";
+import Approved from "./pages/Approved";
 import Dashboard from "./pages/dashboard/Dashboard";
 import Tasks from "./pages/tasks/Tasks";
 import Learning from "./pages/learning/Learning";
@@ -36,6 +38,12 @@ const App = () => (
             } />
             <Route path="/onboarding" element={
               <ProtectedRoute requireOnboarded={false}><Onboarding /></ProtectedRoute>
+            } />
+            <Route path="/pending" element={
+              <ProtectedRoute requireOnboarded={false}><Pending /></ProtectedRoute>
+            } />
+            <Route path="/approved" element={
+              <ProtectedRoute requireOnboarded={false}><Approved /></ProtectedRoute>
             } />
 
             <Route element={<ProtectedRoute><MainLayout /></ProtectedRoute>}>

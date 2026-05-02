@@ -17,13 +17,36 @@ export function ProtectedRoute({ children, requireAdmin = false, requireOnboarde
   if (!user) return <Navigate to="/auth" state={{ from: location }} replace />;
   if (requireAdmin && !isAdmin) return <Navigate to="/dashboard" replace />;
 
-  // Onboarding gate — admins skip it
-  if (requireOnboarded && !isAdmin && profile && profile.onboarding_status !== 'complete') {
-    // Brand-new users see the welcome/intro page first
-    if (profile.onboarding_status === 'not_started') {
-      if (location.pathname !== '/welcome') return <Navigate to="/welcome" replace />;
-    } else if (location.pathname !== '/onboarding') {
-      return <Navigate to="/onboarding" replace />;
+  // Admins bypass all onboarding gates
+  if (isAdmin) return <>{children}</>;
+
+  const status = profile?.onboarding_status;
+
+  // Gate for pages that require full onboarding (dashboard, tasks, etc.)
+  if (requireOnboarded) {
+    if (!status || status === 'not_started') return <Navigate to="/welcome" replace />;
+    if (status === 'application_submitted' || status === 'under_review') return <Navigate to="/pending" replace />;
+    if (status === 'legal_pending') return <Navigate to="/onboarding" replace />;
+    if (status === 'approved') return <Navigate to="/approved" replace />;
+    if (status === 'rejected') return <Navigate to="/pending" replace />;
+    // status === 'complete' → allow through
+  }
+
+  // Gate for pre-onboarding pages — redirect away if already complete or approved
+  if (!requireOnboarded) {
+    if (status === 'complete') return <Navigate to="/dashboard" replace />;
+    // Route-specific guards to prevent wrong-status access
+    if (location.pathname === '/pending' && status !== 'application_submitted' && status !== 'under_review' && status !== 'rejected') {
+      return <Navigate to="/welcome" replace />;
+    }
+    if (location.pathname === '/approved' && status !== 'approved') {
+      return <Navigate to="/dashboard" replace />;
+    }
+    if (location.pathname === '/onboarding' && status !== 'not_started' && status !== 'application_submitted' && status !== 'under_review' && status !== 'legal_pending') {
+      return <Navigate to="/dashboard" replace />;
+    }
+    if (location.pathname === '/welcome' && status && status !== 'not_started') {
+      return <Navigate to="/pending" replace />;
     }
   }
 

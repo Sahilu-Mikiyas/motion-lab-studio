@@ -82,6 +82,7 @@ export default function Auth() {
           <ArrowLeft className="h-4 w-4" /> Back to site
         </Link>
         <div>
+          <img src={logo} alt="Furii Animation Studio" className="h-10 w-auto invert mb-10" />
           <div className="font-display text-5xl leading-tight max-w-md">Begin your trainee journey with Furii Animation Studio.</div>
           <div className="text-muted-foreground mt-6 max-w-md text-sm">Learn structured. Submit real work. Grow into paid production.</div>
         </div>

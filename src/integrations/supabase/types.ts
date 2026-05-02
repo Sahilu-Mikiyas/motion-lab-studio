@@ -18,13 +18,15 @@ export type Database = {
         Row: {
           assigned_level: number | null
           country: string | null
-          cover_letter: string
+          cover_letter: string | null
+          cover_letter_url: string | null
           created_at: string
           cv_url: string | null
           full_name: string
           id: string
           phone: string | null
-          qualifications: string
+          qualifications: string | null
+          qualifications_url: string | null
           questionnaire: Json
           reviewer_notes: string | null
           status: string
@@ -34,13 +36,15 @@ export type Database = {
         Insert: {
           assigned_level?: number | null
           country?: string | null
-          cover_letter: string
+          cover_letter?: string | null
+          cover_letter_url?: string | null
           created_at?: string
           cv_url?: string | null
           full_name: string
           id?: string
           phone?: string | null
-          qualifications: string
+          qualifications?: string | null
+          qualifications_url?: string | null
           questionnaire?: Json
           reviewer_notes?: string | null
           status?: string
@@ -50,13 +54,15 @@ export type Database = {
         Update: {
           assigned_level?: number | null
           country?: string | null
-          cover_letter?: string
+          cover_letter?: string | null
+          cover_letter_url?: string | null
           created_at?: string
           cv_url?: string | null
           full_name?: string
           id?: string
           phone?: string | null
-          qualifications?: string
+          qualifications?: string | null
+          qualifications_url?: string | null
           questionnaire?: Json
           reviewer_notes?: string | null
           status?: string

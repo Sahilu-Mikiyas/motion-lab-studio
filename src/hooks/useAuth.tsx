@@ -12,7 +12,7 @@ type Profile = {
   bio: string | null;
   assigned_level: number;
   paid_status: boolean;
-  onboarding_status: 'not_started' | 'application_submitted' | 'under_review' | 'legal_pending' | 'complete' | 'rejected';
+  onboarding_status: 'not_started' | 'application_submitted' | 'under_review' | 'legal_pending' | 'approved' | 'complete' | 'rejected';
 };
 
 type AuthContextValue = {

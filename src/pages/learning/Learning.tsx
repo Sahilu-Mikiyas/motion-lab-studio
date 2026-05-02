@@ -43,8 +43,10 @@ export default function Learning() {
           Some videos linked here may be deleted or outdated. Feel free to use other material to cover the section and complete your tasks.
         </div>
         {lessons.length === 0 && <div className="text-sm text-muted-foreground">No lessons yet.</div>}
-        {lessons.map((l) => {
-          const locked = (profile?.assigned_level ?? 0) < l.required_level;
+        {lessons.map((l, i) => {
+          const prevDone = i === 0 || done.has(lessons[i - 1].id);
+          const levelOk = (profile?.assigned_level ?? 0) >= l.required_level;
+          const locked = !levelOk && !prevDone;
           const isDone = done.has(l.id);
           return (
             <div key={l.id} className={`border border-border rounded-md p-5 ${locked ? 'opacity-40' : ''}`}>

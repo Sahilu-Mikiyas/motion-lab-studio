@@ -38,6 +38,10 @@ export default function Learning() {
     <>
       <Header title="Learning" subtitle="Structured lessons & external resources" />
       <div className="p-6 lg:p-10 space-y-3">
+        <div className="border border-border rounded-md p-4 text-sm text-muted-foreground bg-secondary/30">
+          <span className="text-foreground font-medium">Notice — </span>
+          Some videos linked here may be deleted or outdated. Feel free to use other material to cover the section and complete your tasks.
+        </div>
         {lessons.length === 0 && <div className="text-sm text-muted-foreground">No lessons yet.</div>}
         {lessons.map((l) => {
           const locked = (profile?.assigned_level ?? 0) < l.required_level;

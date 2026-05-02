@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { Film, GraduationCap, LayoutDashboard, ListChecks, Lock, ShieldCheck, User, Wallet } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import logo from '@/assets/furii-logo.png';
 
 const items = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -15,9 +16,8 @@ export const Sidebar = () => {
   return (
     <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-border bg-sidebar">
       <div className="px-5 h-16 flex items-center gap-2 border-b border-border">
-        <div className="h-6 w-6 rounded-sm bg-foreground" />
-        <span className="font-display text-lg">Furii</span>
-        <span className="text-[9px] font-mono uppercase tracking-[0.25em] text-muted-foreground">Studio</span>
+        <img src={logo} alt="Furii" className="h-6 w-auto invert" />
+        <span className="text-[9px] font-mono uppercase tracking-[0.25em] text-muted-foreground ml-auto">Studio</span>
       </div>
 
       <nav className="flex-1 px-3 py-5 space-y-0.5">

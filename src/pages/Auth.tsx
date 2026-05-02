@@ -6,6 +6,7 @@ import { lovable } from '@/integrations/lovable/index';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
+import logo from '@/assets/furii-logo.png';
 
 const emailSchema = z.string().trim().email('Invalid email').max(255);
 const passwordSchema = z.string().min(8, 'Min 8 characters').max(72);
@@ -81,6 +82,7 @@ export default function Auth() {
           <ArrowLeft className="h-4 w-4" /> Back to site
         </Link>
         <div>
+          <img src={logo} alt="Furii Animation Studio" className="h-10 w-auto invert mb-10" />
           <div className="font-display text-5xl leading-tight max-w-md">Begin your trainee journey with Furii Animation Studio.</div>
           <div className="text-muted-foreground mt-6 max-w-md text-sm">Learn structured. Submit real work. Grow into paid production.</div>
         </div>

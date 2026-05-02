@@ -1,41 +1,48 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
+import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { Check, Upload } from 'lucide-react';
+import { Check, Upload, AlertCircle, X, FileText, Type } from 'lucide-react';
 
 const stepLabels = ['Application', 'Questionnaire', 'Legal & Agreement', 'Complete'];
 
 const appSchema = z.object({
-  full_name: z.string().trim().min(1).max(100),
+  full_name: z.string().trim().min(1, 'Full name required').max(100),
   phone: z.string().trim().max(40).optional().or(z.literal('')),
   country: z.string().trim().max(80).optional().or(z.literal('')),
-  qualifications: z.string().trim().min(10, 'Tell us about your background').max(2000),
-  cover_letter: z.string().trim().min(20, 'A bit more please').max(4000),
 });
+
+type Mode = 'upload' | 'write';
 
 export default function Onboarding() {
   const { user, profile, refreshProfile } = useAuth();
   const navigate = useNavigate();
 
-  const initialStep = profile?.onboarding_status === 'application_submitted' || profile?.onboarding_status === 'under_review' ? 2
+  const initialStep = profile?.onboarding_status === 'application_submitted' || profile?.onboarding_status === 'under_review' ? 1
     : profile?.onboarding_status === 'legal_pending' ? 2
     : 0;
 
   const [step, setStep] = useState(initialStep);
   const [busy, setBusy] = useState(false);
 
-  // Application form
+  // Application
   const [form, setForm] = useState({
     full_name: profile?.full_name || '',
     phone: '',
     country: '',
-    qualifications: '',
-    cover_letter: '',
   });
   const [cvFile, setCvFile] = useState<File | null>(null);
+
+  const [qualMode, setQualMode] = useState<Mode>('write');
+  const [qualText, setQualText] = useState('');
+  const [qualFile, setQualFile] = useState<File | null>(null);
+
+  const [coverMode, setCoverMode] = useState<Mode>('write');
+  const [coverText, setCoverText] = useState('');
+  const [coverFile, setCoverFile] = useState<File | null>(null);
 
   // Questionnaire
   const [q, setQ] = useState({
@@ -50,8 +57,26 @@ export default function Onboarding() {
   const [idFile, setIdFile] = useState<File | null>(null);
   const [signedName, setSignedName] = useState(profile?.full_name || '');
   const [agreed, setAgreed] = useState(false);
+  const [showIdPopup, setShowIdPopup] = useState(false);
+  const idSectionRef = useRef<HTMLDivElement>(null);
+  const idPulse = !idFile && agreed;
+
+  useEffect(() => {
+    if (agreed && !idFile) {
+      setShowIdPopup(true);
+      setTimeout(() => idSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+    }
+  }, [agreed, idFile]);
 
   if (!user) return null;
+
+  const uploadIfFile = async (file: File | null, prefix: string) => {
+    if (!file) return null;
+    const path = `${user.id}/${prefix}-${Date.now()}-${file.name}`;
+    const { error } = await supabase.storage.from('applications').upload(path, file, { upsert: true });
+    if (error) throw error;
+    return path;
+  };
 
   const submitApplication = async () => {
     setBusy(true);
@@ -60,9 +85,15 @@ export default function Onboarding() {
       if (!v.success) throw new Error(v.error.issues[0].message);
       if (!cvFile) throw new Error('Upload your CV');
 
-      const cvPath = `${user.id}/cv-${Date.now()}-${cvFile.name}`;
-      const { error: upErr } = await supabase.storage.from('applications').upload(cvPath, cvFile, { upsert: true });
-      if (upErr) throw upErr;
+      // Each of qualifications/cover letter must be provided in at least one form
+      if (qualMode === 'write' && qualText.trim().length < 10) throw new Error('Tell us about your qualifications (min 10 chars) or upload a PDF');
+      if (qualMode === 'upload' && !qualFile) throw new Error('Upload a qualifications PDF or write it instead');
+      if (coverMode === 'write' && coverText.trim().length < 20) throw new Error('Cover letter is too short — write more or upload a PDF');
+      if (coverMode === 'upload' && !coverFile) throw new Error('Upload a cover letter PDF or write it instead');
+
+      const cvPath = await uploadIfFile(cvFile, 'cv');
+      const qualPath = qualMode === 'upload' ? await uploadIfFile(qualFile, 'qualifications') : null;
+      const coverPath = coverMode === 'upload' ? await uploadIfFile(coverFile, 'cover-letter') : null;
 
       const { error } = await supabase.from('applications').upsert({
         user_id: user.id,
@@ -70,8 +101,10 @@ export default function Onboarding() {
         phone: v.data.phone || null,
         country: v.data.country || null,
         cv_url: cvPath,
-        cover_letter: v.data.cover_letter,
-        qualifications: v.data.qualifications,
+        qualifications: qualMode === 'write' ? qualText.trim() : null,
+        qualifications_url: qualPath,
+        cover_letter: coverMode === 'write' ? coverText.trim() : null,
+        cover_letter_url: coverPath,
         questionnaire: {},
         status: 'submitted',
       }, { onConflict: 'user_id' });
@@ -92,7 +125,6 @@ export default function Onboarding() {
     setBusy(true);
     try {
       if (!q.why_furii || q.why_furii.trim().length < 10) throw new Error('Tell us why Furii');
-      // Pseudo-evaluation: assign a starting level based on years_experience
       const yrs = parseFloat(q.years_experience || '0') || 0;
       const assigned = yrs >= 4 ? 3 : yrs >= 2 ? 2 : yrs >= 1 ? 1 : 0;
 
@@ -120,7 +152,11 @@ export default function Onboarding() {
   const submitLegal = async () => {
     setBusy(true);
     try {
-      if (!idFile) throw new Error('Upload an ID or passport');
+      if (!idFile) {
+        setShowIdPopup(true);
+        idSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        throw new Error('Please upload your ID or passport');
+      }
       if (!signedName.trim()) throw new Error('Type your full legal name to sign');
       if (!agreed) throw new Error('You must accept the agreement');
 
@@ -128,12 +164,12 @@ export default function Onboarding() {
       const { error: upErr } = await supabase.storage.from('legal-docs').upload(idPath, idFile, { upsert: true });
       if (upErr) throw upErr;
 
-      const { error } = await supabase.from('legal_documents').upsert({
+      const { error } = await supabase.from('legal_documents').insert({
         user_id: user.id,
         id_document_url: idPath,
         signed_name: signedName.trim(),
         agreement_version: 'v1.0',
-      }, { onConflict: 'user_id' });
+      });
       if (error) throw error;
 
       await supabase.from('profiles').update({ onboarding_status: 'complete' }).eq('user_id', user.id);
@@ -170,7 +206,7 @@ export default function Onboarding() {
 
         <div className="mt-10 border border-border rounded-md p-6 lg:p-8">
           {step === 0 && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <h2 className="font-display text-2xl">Application</h2>
               <p className="text-sm text-muted-foreground">Submit your CV and tell us about your background.</p>
 
@@ -182,15 +218,24 @@ export default function Onboarding() {
 
               <div>
                 <label className="text-xs text-muted-foreground">CV / Resume</label>
-                <label className="mt-1 flex items-center gap-2 border border-dashed border-border rounded-md px-3 py-3 text-sm cursor-pointer hover:bg-secondary">
-                  <Upload className="h-4 w-4" />
-                  <span className="truncate">{cvFile?.name || 'Upload PDF, DOC or DOCX'}</span>
-                  <input type="file" accept=".pdf,.doc,.docx" className="hidden" onChange={(e) => setCvFile(e.target.files?.[0] || null)} />
-                </label>
+                <FileDrop file={cvFile} setFile={setCvFile} accept=".pdf,.doc,.docx" hint="Upload PDF, DOC or DOCX" />
               </div>
 
-              <Textarea label="Qualifications" value={form.qualifications} onChange={(v) => setForm({ ...form, qualifications: v })} placeholder="Education, prior work, software, etc." />
-              <Textarea label="Cover letter" value={form.cover_letter} onChange={(v) => setForm({ ...form, cover_letter: v })} placeholder="Why animation? Why Furii?" />
+              <DualInput
+                label="Qualifications"
+                helper="Education, prior work, software you use, etc."
+                mode={qualMode} setMode={setQualMode}
+                text={qualText} setText={setQualText}
+                file={qualFile} setFile={setQualFile}
+              />
+
+              <DualInput
+                label="Cover letter"
+                helper="Why animation? Why Furii?"
+                mode={coverMode} setMode={setCoverMode}
+                text={coverText} setText={setCoverText}
+                file={coverFile} setFile={setCoverFile}
+              />
 
               <div className="flex justify-end pt-2">
                 <button onClick={submitApplication} disabled={busy} className="bg-foreground text-background px-5 py-2 text-sm rounded-md disabled:opacity-50">
@@ -223,18 +268,39 @@ export default function Onboarding() {
           )}
 
           {step === 2 && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <h2 className="font-display text-2xl">Legal documents & agreement</h2>
               <p className="text-sm text-muted-foreground">Upload your ID or passport, then sign the trainee agreement.</p>
 
-              <div>
-                <label className="text-xs text-muted-foreground">ID or passport</label>
-                <label className="mt-1 flex items-center gap-2 border border-dashed border-border rounded-md px-3 py-3 text-sm cursor-pointer hover:bg-secondary">
-                  <Upload className="h-4 w-4" />
-                  <span className="truncate">{idFile?.name || 'Upload PDF or image'}</span>
-                  <input type="file" accept=".pdf,image/*" className="hidden" onChange={(e) => setIdFile(e.target.files?.[0] || null)} />
-                </label>
-              </div>
+              {/* ID upload — visually loud, in red */}
+              <motion.div
+                ref={idSectionRef}
+                animate={idPulse ? { scale: [1, 1.01, 1] } : {}}
+                transition={idPulse ? { duration: 1.2, repeat: Infinity } : {}}
+                className="rounded-md border-2 p-5 space-y-3"
+                style={{
+                  borderColor: idFile ? 'hsl(var(--border))' : 'hsl(var(--destructive))',
+                  background: idFile ? 'transparent' : 'hsl(var(--destructive) / 0.06)',
+                }}
+              >
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" style={{ color: idFile ? 'hsl(var(--muted-foreground))' : 'hsl(var(--destructive))' }} />
+                  <div>
+                    <div className="text-sm font-medium" style={{ color: idFile ? 'hsl(var(--foreground))' : 'hsl(var(--destructive))' }}>
+                      Required: Upload your government ID or passport
+                    </div>
+                    <p className="text-xs mt-1" style={{ color: idFile ? 'hsl(var(--muted-foreground))' : 'hsl(var(--destructive) / 0.85)' }}>
+                      We need to verify your identity before activating the trainee agreement. Accepted: PDF or image. This is private and only visible to Furii admins.
+                    </p>
+                  </div>
+                </div>
+                <FileDrop
+                  file={idFile} setFile={setIdFile}
+                  accept=".pdf,image/*"
+                  hint="Upload ID or passport (PDF or image)"
+                  variant={idFile ? 'normal' : 'alert'}
+                />
+              </motion.div>
 
               <div className="border border-border rounded-md p-4 max-h-56 overflow-auto text-xs text-muted-foreground leading-relaxed">
                 <div className="font-display text-base text-foreground mb-2">Furii Trainee Agreement (v1.0)</div>
@@ -268,6 +334,87 @@ export default function Onboarding() {
           )}
         </div>
       </div>
+
+      {/* ID popup reminder */}
+      <AnimatePresence>
+        {showIdPopup && step === 2 && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4"
+            onClick={() => setShowIdPopup(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 8 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 8 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative max-w-md w-full rounded-md p-6 border-2"
+              style={{ borderColor: 'hsl(var(--destructive))', background: 'hsl(var(--card))' }}
+            >
+              <button onClick={() => setShowIdPopup(false)} className="absolute top-3 right-3 text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </button>
+              <AlertCircle className="h-6 w-6" style={{ color: 'hsl(var(--destructive))' }} />
+              <div className="font-display text-2xl mt-3">One more thing</div>
+              <p className="text-sm text-muted-foreground mt-2">
+                Before you can finish the agreement, you need to upload your <span style={{ color: 'hsl(var(--destructive))' }} className="font-medium">government ID or passport</span>. Look for the red section at the top of this step.
+              </p>
+              <button
+                onClick={() => setShowIdPopup(false)}
+                className="mt-5 w-full rounded-md py-2 text-sm font-medium text-background"
+                style={{ background: 'hsl(var(--destructive))' }}
+              >
+                Got it — take me there
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function FileDrop({ file, setFile, accept, hint, variant = 'normal' }: { file: File | null; setFile: (f: File | null) => void; accept: string; hint: string; variant?: 'normal' | 'alert' }) {
+  const alert = variant === 'alert';
+  return (
+    <label
+      className="flex items-center gap-2 border border-dashed rounded-md px-3 py-3 text-sm cursor-pointer hover:bg-secondary"
+      style={alert ? { borderColor: 'hsl(var(--destructive))', color: 'hsl(var(--destructive))' } : undefined}
+    >
+      <Upload className="h-4 w-4" />
+      <span className="truncate">{file?.name || hint}</span>
+      <input type="file" accept={accept} className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+    </label>
+  );
+}
+
+function DualInput({ label, helper, mode, setMode, text, setText, file, setFile }: {
+  label: string; helper?: string;
+  mode: Mode; setMode: (m: Mode) => void;
+  text: string; setText: (v: string) => void;
+  file: File | null; setFile: (f: File | null) => void;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <label className="text-xs text-muted-foreground">{label}</label>
+        <div className="inline-flex items-center gap-px text-[10px] font-mono uppercase tracking-wider border border-border rounded-sm overflow-hidden">
+          <button type="button" onClick={() => setMode('write')} className={`px-2.5 py-1 flex items-center gap-1 ${mode === 'write' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}>
+            <Type className="h-3 w-3" /> Write
+          </button>
+          <button type="button" onClick={() => setMode('upload')} className={`px-2.5 py-1 flex items-center gap-1 ${mode === 'upload' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}>
+            <FileText className="h-3 w-3" /> PDF
+          </button>
+        </div>
+      </div>
+      {mode === 'write' ? (
+        <textarea
+          value={text} onChange={(e) => setText(e.target.value)} rows={4} placeholder={helper}
+          className="w-full mt-1 bg-input border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+        />
+      ) : (
+        <div className="mt-1">
+          <FileDrop file={file} setFile={setFile} accept=".pdf,.doc,.docx" hint="Upload PDF, DOC or DOCX" />
+        </div>
+      )}
     </div>
   );
 }
@@ -283,6 +430,7 @@ function Field({ label, value, onChange, type = 'text', placeholder }: { label: 
     </div>
   );
 }
+
 function Textarea({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
   return (
     <div>

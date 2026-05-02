@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { LogOut } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
+import { NotificationBell } from './NotificationBell';
 
 export const Header = ({ title, subtitle }: { title: string; subtitle?: string }) => {
   const { profile, signOut } = useAuth();
@@ -18,8 +19,9 @@ export const Header = ({ title, subtitle }: { title: string; subtitle?: string }
           {subtitle && <div className="text-xs text-muted-foreground truncate">{subtitle}</div>}
         </div>
 
-        <div className="flex items-center gap-3 pl-3 border-l border-border">
-          <div className="text-right hidden sm:block">
+        <div className="flex items-center gap-2 pl-3 border-l border-border">
+          <NotificationBell />
+          <div className="text-right hidden sm:block ml-1">
             <div className="text-sm leading-tight">{profile?.display_name || profile?.full_name || 'Member'}</div>
             <div className="text-[10px] text-muted-foreground font-mono truncate max-w-[160px]">{profile?.email}</div>
           </div>

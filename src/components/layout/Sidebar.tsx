@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Film, GraduationCap, LayoutDashboard, ListChecks, Lock, Mail, ShieldCheck, User, Wallet } from 'lucide-react';
+import { Film, GraduationCap, LayoutDashboard, ListChecks, Lock, Mail, MessageSquare, ShieldCheck, User, Wallet } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import logo from '@/assets/furii-logo.png';
 
@@ -9,11 +11,31 @@ const items = [
   { to: '/learning', label: 'Learning', icon: GraduationCap },
   { to: '/payments', label: 'Payments', icon: Wallet, paidOnly: true },
   { to: '/profile', label: 'Profile', icon: User },
+  { to: '/chat', label: 'Messages', icon: MessageSquare },
   { to: '/contact', label: 'Contact', icon: Mail },
 ];
 
 export const Sidebar = () => {
-  const { profile, isAdmin } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
+  const [unreadMsgs, setUnreadMsgs] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+    const load = async () => {
+      const { count } = await supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('recipient_id', user.id)
+        .is('read_at', null);
+      setUnreadMsgs(count || 0);
+    };
+    load();
+    const channel = supabase.channel('sidebar-msgs')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
+
   return (
     <aside className="hidden lg:flex w-60 shrink-0 flex-col border-r border-border bg-sidebar">
       <div className="px-5 h-16 flex items-center gap-2 border-b border-border">
@@ -24,6 +46,7 @@ export const Sidebar = () => {
       <nav className="flex-1 px-3 py-5 space-y-0.5">
         {items.map((it) => {
           const locked = it.paidOnly && !profile?.paid_status;
+          const badge = it.to === '/chat' && unreadMsgs > 0 ? unreadMsgs : 0;
           return (
             <NavLink
               key={it.to}
@@ -38,6 +61,11 @@ export const Sidebar = () => {
               <it.icon className="h-4 w-4" />
               <span className="flex-1">{it.label}</span>
               {locked && <Lock className="h-3 w-3" />}
+              {badge > 0 && (
+                <span className="h-4 min-w-4 px-1 rounded-full bg-foreground text-background text-[9px] font-mono flex items-center justify-center">
+                  {badge}
+                </span>
+              )}
             </NavLink>
           );
         })}

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
@@ -6,11 +6,12 @@ import {
   Users, FileText, CheckSquare, BookOpen, LayoutDashboard,
   ChevronDown, ChevronUp, ExternalLink, AlertCircle, LogOut,
   CheckCircle, XCircle, RefreshCw, DollarSign, Eye, Activity,
-  TrendingUp, Clock, UserCheck, Award, Folder, Download,
+  TrendingUp, Clock, UserCheck, Folder, Download, MessageSquare, Send, Bell,
 } from 'lucide-react';
 import logo from '@/assets/furii-logo.png';
+import { useNotifications } from '@/hooks/useNotifications';
 
-type Tab = 'overview' | 'applications' | 'submissions' | 'users' | 'files' | 'content';
+type Tab = 'overview' | 'applications' | 'submissions' | 'users' | 'files' | 'content' | 'messages';
 
 const STATUS_COLORS: Record<string, string> = {
   not_started: 'text-muted-foreground',
@@ -209,10 +210,106 @@ export default function Admin() {
     })),
   ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 10);
 
+  // Messages state
+  const { user: adminUser } = useAuth();
+  const { unreadCount: adminUnread, notifications: adminNotifs, markRead: markAdminRead, markAllRead: markAllAdminRead } = useNotifications();
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [activeConvo, setActiveConvo] = useState<string | null>(null);
+  const [convoMessages, setConvoMessages] = useState<any[]>([]);
+  const [msgInput, setMsgInput] = useState('');
+  const [msgSending, setMsgSending] = useState(false);
+  const chatBottomRef = useRef<HTMLDivElement>(null);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  const unreadMessages = conversations.reduce((acc, c) => acc + (c.unread || 0), 0);
+
+  const loadConversations = useCallback(async () => {
+    if (!adminUser) return;
+    const { data: msgs } = await supabase
+      .from('messages')
+      .select('*, sender:profiles!messages_sender_id_fkey(full_name, display_name, email, user_id), recipient:profiles!messages_recipient_id_fkey(full_name, display_name, email, user_id)')
+      .or(`sender_id.eq.${adminUser.id},recipient_id.eq.${adminUser.id}`)
+      .order('created_at', { ascending: false });
+
+    if (!msgs) return;
+    const map = new Map<string, any>();
+    for (const m of msgs) {
+      const other = m.sender_id === adminUser.id ? m.recipient : m.sender;
+      if (!other) continue;
+      const uid = other.user_id;
+      if (!map.has(uid)) {
+        map.set(uid, { user_id: uid, name: other.full_name || other.display_name || other.email, email: other.email, lastMsg: m.content, lastAt: m.created_at, unread: 0 });
+      }
+      if (m.sender_id !== adminUser.id && !m.read_at) {
+        map.get(uid).unread += 1;
+      }
+    }
+    setConversations(Array.from(map.values()));
+  }, [adminUser]);
+
+  const loadConvoMessages = useCallback(async (otherUserId: string) => {
+    if (!adminUser) return;
+    const { data } = await supabase
+      .from('messages')
+      .select('*')
+      .or(`and(sender_id.eq.${adminUser.id},recipient_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},recipient_id.eq.${adminUser.id})`)
+      .order('created_at', { ascending: true });
+    setConvoMessages(data || []);
+    // Mark as read
+    await supabase.from('messages')
+      .update({ read_at: new Date().toISOString() })
+      .eq('sender_id', otherUserId)
+      .eq('recipient_id', adminUser.id)
+      .is('read_at', null);
+    setConversations(prev => prev.map(c => c.user_id === otherUserId ? { ...c, unread: 0 } : c));
+  }, [adminUser]);
+
+  useEffect(() => { loadConversations(); }, [loadConversations]);
+
+  useEffect(() => {
+    if (activeConvo) loadConvoMessages(activeConvo);
+  }, [activeConvo, loadConvoMessages]);
+
+  useEffect(() => { chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [convoMessages]);
+
+  // Realtime for admin messages
+  useEffect(() => {
+    if (!adminUser) return;
+    const channel = supabase.channel('admin-chat')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => {
+        loadConversations();
+        if (activeConvo) loadConvoMessages(activeConvo);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [adminUser, activeConvo, loadConversations, loadConvoMessages]);
+
+  const sendAdminMsg = async () => {
+    if (!msgInput.trim() || !adminUser || !activeConvo || msgSending) return;
+    setMsgSending(true);
+    const content = msgInput.trim();
+    setMsgInput('');
+    await supabase.from('messages').insert({ sender_id: adminUser.id, recipient_id: activeConvo, content });
+    setMsgSending(false);
+  };
+
+  const handleMsgKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAdminMsg(); }
+  };
+
+  function fmtMsg(d: string) {
+    return new Date(d).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  }
+  function fmtMsgDate(d: string) {
+    return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  }
+
   const tabs: { id: Tab; label: string; icon: any; badge?: number }[] = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'applications', label: 'Applications', icon: FileText, badge: pendingApps },
     { id: 'submissions', label: 'Submissions', icon: CheckSquare, badge: pendingSubs },
+    { id: 'messages', label: 'Messages', icon: MessageSquare, badge: unreadMessages },
     { id: 'users', label: 'Users', icon: Users },
     { id: 'files', label: 'Files', icon: Folder },
     { id: 'content', label: 'Content', icon: BookOpen },
@@ -257,9 +354,48 @@ export default function Admin() {
             <h1 className="font-display text-xl capitalize">{tab}</h1>
             <p className="text-xs text-muted-foreground mt-0.5">Furii Animation Studio · Admin Console</p>
           </div>
-          <button onClick={load} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-3 py-1.5 rounded-md">
-            <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Admin notification bell */}
+            <div ref={notifRef} className="relative">
+              <button
+                onClick={() => setNotifOpen(o => !o)}
+                className="relative h-9 w-9 grid place-items-center rounded-md border border-border hover:bg-secondary"
+              >
+                <Bell className="h-4 w-4" />
+                {adminUnread > 0 && (
+                  <span className="absolute -top-1 -right-1 h-4 min-w-4 px-1 rounded-full bg-foreground text-background text-[9px] font-mono flex items-center justify-center">
+                    {adminUnread}
+                  </span>
+                )}
+              </button>
+              {notifOpen && (
+                <div className="absolute right-0 top-11 w-72 bg-background border border-border rounded-lg shadow-xl z-50 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                    <span className="text-sm font-medium">Notifications</span>
+                    {adminUnread > 0 && (
+                      <button onClick={markAllAdminRead} className="text-xs text-muted-foreground hover:text-foreground">Mark all read</button>
+                    )}
+                  </div>
+                  <div className="max-h-80 overflow-y-auto divide-y divide-border">
+                    {adminNotifs.length === 0 && <div className="px-4 py-6 text-sm text-muted-foreground text-center">No notifications.</div>}
+                    {adminNotifs.map(n => (
+                      <button key={n.id} onClick={() => { markAdminRead(n.id); setNotifOpen(false); if (n.link === '/chat') { setTab('messages'); } }}
+                        className={`w-full flex gap-3 px-4 py-3 text-left hover:bg-secondary/50 ${!n.read ? 'bg-secondary/20' : ''}`}>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm ${!n.read ? 'font-medium' : ''}`}>{n.title}</p>
+                          {n.body && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{n.body}</p>}
+                        </div>
+                        {!n.read && <span className="h-1.5 w-1.5 rounded-full bg-foreground shrink-0 mt-2" />}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <button onClick={load} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-3 py-1.5 rounded-md">
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
+            </button>
+          </div>
         </div>
 
         <div className="p-8">
@@ -369,6 +505,116 @@ export default function Admin() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ── MESSAGES ── */}
+          {tab === 'messages' && (
+            <div className="flex gap-0 border border-border rounded-lg overflow-hidden" style={{ height: 'calc(100vh - 160px)' }}>
+              {/* Conversation list */}
+              <div className="w-72 shrink-0 border-r border-border flex flex-col">
+                <div className="px-4 py-3 border-b border-border">
+                  <span className="text-sm font-medium">Conversations</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">{conversations.length} trainees</p>
+                </div>
+                <div className="flex-1 overflow-y-auto divide-y divide-border">
+                  {conversations.length === 0 && (
+                    <div className="px-4 py-8 text-sm text-muted-foreground text-center">No messages yet.</div>
+                  )}
+                  {conversations.map(c => (
+                    <button
+                      key={c.user_id}
+                      onClick={() => setActiveConvo(c.user_id)}
+                      className={`w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-secondary/50 transition-colors ${activeConvo === c.user_id ? 'bg-secondary' : ''}`}
+                    >
+                      <div className="h-9 w-9 rounded-full bg-secondary border border-border flex items-center justify-center text-sm font-display shrink-0">
+                        {(c.name || '?')[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium truncate">{c.name}</span>
+                          {c.unread > 0 && (
+                            <span className="h-5 min-w-5 px-1 rounded-full bg-foreground text-background text-[9px] font-mono flex items-center justify-center shrink-0">
+                              {c.unread}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">{c.lastMsg}</p>
+                        <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{fmtMsgDate(c.lastAt)}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Chat area */}
+              <div className="flex-1 flex flex-col min-w-0">
+                {!activeConvo ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-3">
+                    <MessageSquare className="h-10 w-10 opacity-20" />
+                    <p className="text-sm">Select a conversation</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Chat header */}
+                    <div className="px-5 py-3 border-b border-border shrink-0">
+                      <div className="text-sm font-medium">{conversations.find(c => c.user_id === activeConvo)?.name || 'Trainee'}</div>
+                      <div className="text-xs text-muted-foreground font-mono">{conversations.find(c => c.user_id === activeConvo)?.email}</div>
+                    </div>
+
+                    {/* Messages */}
+                    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-1">
+                      {convoMessages.map((m, i) => {
+                        const isAdmin = m.sender_id === adminUser?.id;
+                        const showTime = i === convoMessages.length - 1 || convoMessages[i + 1]?.sender_id !== m.sender_id;
+                        return (
+                          <div key={m.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
+                            <div className={`max-w-[70%] flex flex-col gap-0.5 ${isAdmin ? 'items-end' : 'items-start'}`}>
+                              <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${isAdmin
+                                ? 'bg-foreground text-background rounded-br-sm'
+                                : 'bg-secondary text-foreground rounded-bl-sm border border-border'}`}>
+                                {m.content}
+                              </div>
+                              {showTime && (
+                                <span className="text-[10px] text-muted-foreground font-mono px-1">
+                                  {fmtMsg(m.created_at)}{isAdmin && m.read_at ? ' · Read' : ''}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div ref={chatBottomRef} />
+                    </div>
+
+                    {/* Input */}
+                    <div className="px-5 py-3 border-t border-border shrink-0">
+                      <div className="flex items-end gap-2">
+                        <textarea
+                          value={msgInput}
+                          onChange={e => setMsgInput(e.target.value)}
+                          onKeyDown={handleMsgKey}
+                          rows={1}
+                          placeholder="Reply…"
+                          className="flex-1 bg-input border border-border rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-ring max-h-24 overflow-y-auto"
+                          onInput={e => {
+                            const t = e.target as HTMLTextAreaElement;
+                            t.style.height = 'auto';
+                            t.style.height = Math.min(t.scrollHeight, 96) + 'px';
+                          }}
+                        />
+                        <button
+                          onClick={sendAdminMsg}
+                          disabled={!msgInput.trim() || msgSending}
+                          className="h-9 w-9 rounded-xl bg-foreground text-background grid place-items-center hover:bg-foreground/90 disabled:opacity-40 shrink-0"
+                        >
+                          <Send className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}

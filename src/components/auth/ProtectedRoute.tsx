@@ -17,8 +17,11 @@ export function ProtectedRoute({ children, requireAdmin = false, requireOnboarde
   if (!user) return <Navigate to="/auth" state={{ from: location }} replace />;
   if (requireAdmin && !isAdmin) return <Navigate to="/dashboard" replace />;
 
-  // Admins bypass all onboarding gates
-  if (isAdmin) return <>{children}</>;
+  // Admins bypass all onboarding gates and pre-onboarding pages
+  if (isAdmin) {
+    if (!requireOnboarded) return <Navigate to="/dashboard" replace />;
+    return <>{children}</>;
+  }
 
   const status = profile?.onboarding_status;
 

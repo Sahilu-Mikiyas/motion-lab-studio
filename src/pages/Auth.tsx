@@ -6,6 +6,7 @@ import { lovable } from '@/integrations/lovable/index';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { ArrowLeft } from 'lucide-react';
+import logo from '@/assets/furii-logo.png';
 
 const emailSchema = z.string().trim().email('Invalid email').max(255);
 const passwordSchema = z.string().min(8, 'Min 8 characters').max(72);

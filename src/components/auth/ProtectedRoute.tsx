@@ -19,7 +19,12 @@ export function ProtectedRoute({ children, requireAdmin = false, requireOnboarde
 
   // Onboarding gate — admins skip it
   if (requireOnboarded && !isAdmin && profile && profile.onboarding_status !== 'complete') {
-    if (location.pathname !== '/onboarding') return <Navigate to="/onboarding" replace />;
+    // Brand-new users see the welcome/intro page first
+    if (profile.onboarding_status === 'not_started') {
+      if (location.pathname !== '/welcome') return <Navigate to="/welcome" replace />;
+    } else if (location.pathname !== '/onboarding') {
+      return <Navigate to="/onboarding" replace />;
+    }
   }
 
   return <>{children}</>;

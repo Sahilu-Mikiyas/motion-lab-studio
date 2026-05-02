@@ -9,6 +9,7 @@ import { MainLayout } from "@/components/layout/MainLayout";
 import Landing from "./pages/Landing";
 import Auth from "./pages/Auth";
 import Onboarding from "./pages/Onboarding";
+import Welcome from "./pages/Welcome";
 import Dashboard from "./pages/dashboard/Dashboard";
 import Tasks from "./pages/tasks/Tasks";
 import Learning from "./pages/learning/Learning";
@@ -30,6 +31,9 @@ const App = () => (
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
 
+            <Route path="/welcome" element={
+              <ProtectedRoute requireOnboarded={false}><Welcome /></ProtectedRoute>
+            } />
             <Route path="/onboarding" element={
               <ProtectedRoute requireOnboarded={false}><Onboarding /></ProtectedRoute>
             } />

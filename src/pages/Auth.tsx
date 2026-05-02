@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import logo from '@/assets/furii-logo.png';
 
 const emailSchema = z.string().trim().email('Invalid email').max(255);
@@ -20,6 +20,7 @@ export default function Auth() {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     if (!authLoading && user) navigate('/dashboard', { replace: true });
@@ -113,12 +114,21 @@ export default function Auth() {
               value={email} onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-input border border-border rounded-md px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             />
-            <input
-              type="password" required minLength={8} maxLength={72}
-              placeholder="Password"
-              value={password} onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-input border border-border rounded-md px-3 py-2.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'} required minLength={8} maxLength={72}
+                placeholder="Password"
+                value={password} onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-input border border-border rounded-md px-3 py-2.5 pr-10 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(p => !p)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
             <button
               type="submit" disabled={busy}
               className="w-full bg-foreground text-background rounded-md py-2.5 text-sm hover:bg-foreground/90 disabled:opacity-50"

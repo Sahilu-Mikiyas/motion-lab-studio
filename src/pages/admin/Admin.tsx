@@ -226,26 +226,52 @@ export default function Admin() {
 
   const loadConversations = useCallback(async () => {
     if (!adminUser) return;
+
+    // Load ALL non-admin profiles
+    const { data: allProfiles } = await supabase
+      .from('profiles')
+      .select('user_id, full_name, display_name, email, onboarding_status')
+      .neq('email', 'furiimotionlabs@outlook.com')
+      .order('created_at', { ascending: false });
+
+    // Load all messages involving admin (no join — plain columns only)
     const { data: msgs } = await supabase
       .from('messages')
-      .select('*, sender:profiles!messages_sender_id_fkey(full_name, display_name, email, user_id), recipient:profiles!messages_recipient_id_fkey(full_name, display_name, email, user_id)')
+      .select('sender_id, recipient_id, content, read_at, created_at')
       .or(`sender_id.eq.${adminUser.id},recipient_id.eq.${adminUser.id}`)
       .order('created_at', { ascending: false });
 
-    if (!msgs) return;
-    const map = new Map<string, any>();
-    for (const m of msgs) {
-      const other = m.sender_id === adminUser.id ? m.recipient : m.sender;
-      if (!other) continue;
-      const uid = other.user_id;
-      if (!map.has(uid)) {
-        map.set(uid, { user_id: uid, name: other.full_name || other.display_name || other.email, email: other.email, lastMsg: m.content, lastAt: m.created_at, unread: 0 });
+    // Build a map: user_id -> last message info + unread count
+    const msgMap = new Map<string, { lastMsg: string; lastAt: string; unread: number }>();
+    for (const m of (msgs || [])) {
+      const otherId = m.sender_id === adminUser.id ? m.recipient_id : m.sender_id;
+      if (!msgMap.has(otherId)) {
+        msgMap.set(otherId, { lastMsg: m.content, lastAt: m.created_at, unread: 0 });
       }
       if (m.sender_id !== adminUser.id && !m.read_at) {
-        map.get(uid).unread += 1;
+        msgMap.get(otherId)!.unread += 1;
       }
     }
-    setConversations(Array.from(map.values()));
+
+    const list = (allProfiles || []).map(p => ({
+      user_id: p.user_id,
+      name: p.full_name || p.display_name || p.email || 'Unknown',
+      email: p.email,
+      status: p.onboarding_status,
+      lastMsg: msgMap.get(p.user_id)?.lastMsg || null,
+      lastAt: msgMap.get(p.user_id)?.lastAt || null,
+      unread: msgMap.get(p.user_id)?.unread || 0,
+    }));
+
+    // Sort: users with messages first (by recency), then the rest alphabetically
+    list.sort((a, b) => {
+      if (a.lastAt && b.lastAt) return new Date(b.lastAt).getTime() - new Date(a.lastAt).getTime();
+      if (a.lastAt) return -1;
+      if (b.lastAt) return 1;
+      return (a.name).localeCompare(b.name);
+    });
+
+    setConversations(list);
   }, [adminUser]);
 
   const loadConvoMessages = useCallback(async (otherUserId: string) => {
@@ -520,7 +546,7 @@ export default function Admin() {
                 </div>
                 <div className="flex-1 overflow-y-auto divide-y divide-border">
                   {conversations.length === 0 && (
-                    <div className="px-4 py-8 text-sm text-muted-foreground text-center">No messages yet.</div>
+                    <div className="px-4 py-8 text-sm text-muted-foreground text-center">No users yet.</div>
                   )}
                   {conversations.map(c => (
                     <button
@@ -532,7 +558,7 @@ export default function Admin() {
                         {(c.name || '?')[0].toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-1">
                           <span className="text-sm font-medium truncate">{c.name}</span>
                           {c.unread > 0 && (
                             <span className="h-5 min-w-5 px-1 rounded-full bg-foreground text-background text-[9px] font-mono flex items-center justify-center shrink-0">
@@ -540,8 +566,15 @@ export default function Admin() {
                             </span>
                           )}
                         </div>
-                        <p className="text-xs text-muted-foreground truncate mt-0.5">{c.lastMsg}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono mt-0.5">{fmtMsgDate(c.lastAt)}</p>
+                        <p className="text-xs text-muted-foreground truncate mt-0.5">
+                          {c.lastMsg || <span className="italic">No messages yet</span>}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {c.lastAt && <p className="text-[10px] text-muted-foreground font-mono">{fmtMsgDate(c.lastAt)}</p>}
+                          <span className={`text-[9px] font-mono uppercase ${STATUS_COLORS[c.status] || 'text-muted-foreground'}`}>
+                            {c.status?.replace(/_/g, ' ')}
+                          </span>
+                        </div>
                       </div>
                     </button>
                   ))}

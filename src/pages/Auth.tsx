@@ -43,11 +43,15 @@ export default function Auth() {
           password: pv.data,
           options: {
             data: { full_name: nv.data },
-            emailRedirectTo: `${window.location.origin}/dashboard`,
+            emailRedirectTo: `${window.location.origin}/auth`,
           },
         });
         if (error) throw error;
-        toast.success('Account created');
+        toast.success('Account created — check your email to confirm your address before signing in.');
+        setMode('signin');
+        setPassword('');
+        setBusy(false);
+        return;
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: ev.data, password: pv.data });
         if (error) throw error;

@@ -29,26 +29,11 @@ export default function Chat() {
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Resolve admin user_id via auth.users email — use user_roles as fallback
+  // Resolve admin user_id via SECURITY DEFINER function (bypasses RLS safely)
   useEffect(() => {
-    const resolve = async () => {
-      // Try profiles table first
-      const { data: prof } = await supabase
-        .from('profiles')
-        .select('user_id')
-        .eq('email', 'furiimotionlabs@outlook.com')
-        .maybeSingle();
-      if (prof?.user_id) { setAdminId(prof.user_id); return; }
-
-      // Fallback: get any user with admin role
-      const { data: role } = await supabase
-        .from('user_roles')
-        .select('user_id')
-        .eq('role', 'admin')
-        .maybeSingle();
-      if (role?.user_id) setAdminId(role.user_id);
-    };
-    resolve();
+    supabase.rpc('get_admin_id').then(({ data }) => {
+      if (data) setAdminId(data as string);
+    });
   }, []);
 
   const load = useCallback(async () => {

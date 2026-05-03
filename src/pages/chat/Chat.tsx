@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { Header } from '@/components/layout/Header';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
-import { Send, MessageSquare } from 'lucide-react';
+import { Send, MessageSquare, Pencil, Trash2, Check, X } from 'lucide-react';
 
 type Message = {
   id: string;
@@ -19,6 +19,9 @@ function fmt(d: string) {
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 }
+function isWithin24h(created_at: string) {
+  return Date.now() - new Date(created_at).getTime() < 24 * 60 * 60 * 1000;
+}
 
 export default function Chat() {
   const { user } = useAuth();
@@ -27,9 +30,11 @@ export default function Chat() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Resolve admin user_id via SECURITY DEFINER function (bypasses RLS safely)
   useEffect(() => {
     supabase.rpc('get_admin_id').then(({ data }) => {
       if (data) setAdminId(data as string);
@@ -45,8 +50,6 @@ export default function Chat() {
       .order('created_at', { ascending: true });
     if (err) { setError(err.message); return; }
     setMessages((data as Message[]) || []);
-
-    // Mark incoming messages as read
     if (data && data.length > 0) {
       await supabase.from('messages')
         .update({ read_at: new Date().toISOString() })
@@ -58,7 +61,6 @@ export default function Chat() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Realtime
   useEffect(() => {
     if (!user || !adminId) return;
     const channel = supabase
@@ -68,6 +70,13 @@ export default function Chat() {
         const mine = msg.sender_id === user.id && msg.recipient_id === adminId;
         const theirs = msg.sender_id === adminId && msg.recipient_id === user.id;
         if (mine || theirs) setMessages(prev => [...prev, msg]);
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, payload => {
+        const msg = payload.new as Message;
+        setMessages(prev => prev.map(m => m.id === msg.id ? msg : m));
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'messages' }, payload => {
+        setMessages(prev => prev.filter(m => m.id !== payload.old.id));
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
@@ -81,20 +90,30 @@ export default function Chat() {
     setError(null);
     const content = input.trim();
     setInput('');
-    const { error: err } = await supabase.from('messages').insert({
-      sender_id: user.id,
-      recipient_id: adminId,
-      content,
-    });
+    const { error: err } = await supabase.from('messages').insert({ sender_id: user.id, recipient_id: adminId, content });
     if (err) { setError(err.message); setInput(content); }
     setSending(false);
+  };
+
+  const saveEdit = async (id: string) => {
+    if (!editText.trim()) return;
+    await supabase.from('messages').update({ content: editText.trim() }).eq('id', id);
+    setEditingId(null);
+  };
+
+  const deleteMsg = async (id: string) => {
+    await supabase.from('messages').delete().eq('id', id);
+  };
+
+  const startEdit = (m: Message) => {
+    setEditingId(m.id);
+    setEditText(m.content);
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   };
 
-  // Group by date
   const grouped: { date: string; msgs: Message[] }[] = [];
   messages.forEach(m => {
     const d = fmtDate(m.created_at);
@@ -104,7 +123,7 @@ export default function Chat() {
   });
 
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 0px)' }}>
+    <div className="flex flex-col h-screen">
       <Header title="Messages" subtitle="Chat with the Furii team" />
 
       {!adminId && (
@@ -115,7 +134,7 @@ export default function Chat() {
 
       {adminId && (
         <>
-          <div className="flex-1 overflow-y-auto px-4 lg:px-10 py-6 space-y-2">
+          <div className="flex-1 overflow-y-auto px-4 lg:px-10 py-6 space-y-1">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
                 <MessageSquare className="h-10 w-10 opacity-20" />
@@ -133,15 +152,65 @@ export default function Chat() {
                   {group.msgs.map((m, i) => {
                     const isMe = m.sender_id === user?.id;
                     const showMeta = i === group.msgs.length - 1 || group.msgs[i + 1]?.sender_id !== m.sender_id;
+                    const canEdit = isMe && isWithin24h(m.created_at);
+                    const isEditing = editingId === m.id;
+
                     return (
-                      <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        key={m.id}
+                        className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+                        onMouseEnter={() => setHoveredId(m.id)}
+                        onMouseLeave={() => setHoveredId(null)}
+                      >
                         <div className={`max-w-[75%] flex flex-col gap-0.5 ${isMe ? 'items-end' : 'items-start'}`}>
-                          <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words ${
-                            isMe ? 'bg-foreground text-background rounded-br-sm' : 'bg-secondary text-foreground rounded-bl-sm border border-border'
-                          }`}>
-                            {m.content}
-                          </div>
-                          {showMeta && (
+                          {/* Action buttons */}
+                          {isMe && canEdit && hoveredId === m.id && !isEditing && (
+                            <div className="flex items-center gap-1 mb-0.5">
+                              <button
+                                onClick={() => startEdit(m)}
+                                className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary border border-border"
+                                title="Edit"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => deleteMsg(m.id)}
+                                className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-border"
+                                title="Delete"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            </div>
+                          )}
+
+                          {isEditing ? (
+                            <div className="flex flex-col gap-1.5 w-full min-w-[200px]">
+                              <textarea
+                                value={editText}
+                                onChange={e => setEditText(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(m.id); } if (e.key === 'Escape') setEditingId(null); }}
+                                autoFocus
+                                rows={2}
+                                className="w-full bg-input border border-ring rounded-xl px-3 py-2 text-sm resize-none focus:outline-none"
+                              />
+                              <div className="flex gap-1.5 justify-end">
+                                <button onClick={() => setEditingId(null)} className="h-7 px-2.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-secondary flex items-center gap-1">
+                                  <X className="h-3 w-3" /> Cancel
+                                </button>
+                                <button onClick={() => saveEdit(m.id)} className="h-7 px-2.5 rounded-md bg-foreground text-background text-xs flex items-center gap-1 hover:bg-foreground/90">
+                                  <Check className="h-3 w-3" /> Save
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words ${
+                              isMe ? 'bg-foreground text-background rounded-br-sm' : 'bg-secondary text-foreground rounded-bl-sm border border-border'
+                            }`}>
+                              {m.content}
+                            </div>
+                          )}
+
+                          {showMeta && !isEditing && (
                             <span className="text-[10px] text-muted-foreground font-mono px-1">
                               {fmt(m.created_at)}{isMe && m.read_at ? ' · Read' : ''}
                             </span>

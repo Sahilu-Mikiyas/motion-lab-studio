@@ -6,7 +6,7 @@ import {
   Users, FileText, CheckSquare, BookOpen, LayoutDashboard,
   ChevronDown, ChevronUp, ExternalLink, AlertCircle, LogOut,
   CheckCircle, XCircle, RefreshCw, DollarSign, Eye, Activity,
-  TrendingUp, Clock, UserCheck, Folder, Download, MessageSquare, Send, Bell,
+  TrendingUp, Clock, UserCheck, Folder, Download, MessageSquare, Send, Bell, Pencil, Trash2, Check, X,
 } from 'lucide-react';
 import logo from '@/assets/furii-logo.png';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -218,7 +218,25 @@ export default function Admin() {
   const [convoMessages, setConvoMessages] = useState<any[]>([]);
   const [msgInput, setMsgInput] = useState('');
   const [msgSending, setMsgSending] = useState(false);
+  const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
+  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
+  const [editMsgText, setEditMsgText] = useState('');
   const chatBottomRef = useRef<HTMLDivElement>(null);
+
+  const isWithin24h = (created_at: string) =>
+    Date.now() - new Date(created_at).getTime() < 24 * 60 * 60 * 1000;
+
+  const saveAdminEdit = async (id: string) => {
+    if (!editMsgText.trim()) return;
+    await supabase.from('messages').update({ content: editMsgText.trim() }).eq('id', id);
+    setConvoMessages(prev => prev.map(m => m.id === id ? { ...m, content: editMsgText.trim() } : m));
+    setEditingMsgId(null);
+  };
+
+  const deleteAdminMsg = async (id: string) => {
+    await supabase.from('messages').delete().eq('id', id);
+    setConvoMessages(prev => prev.filter(m => m.id !== id));
+  };
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
 
@@ -601,15 +619,51 @@ export default function Admin() {
                       {convoMessages.map((m, i) => {
                         const isAdmin = m.sender_id === adminUser?.id;
                         const showTime = i === convoMessages.length - 1 || convoMessages[i + 1]?.sender_id !== m.sender_id;
+                        const canEdit = isAdmin && isWithin24h(m.created_at);
+                        const isEditing = editingMsgId === m.id;
                         return (
-                          <div key={m.id} className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}>
+                          <div
+                            key={m.id}
+                            className={`flex ${isAdmin ? 'justify-end' : 'justify-start'}`}
+                            onMouseEnter={() => setHoveredMsgId(m.id)}
+                            onMouseLeave={() => setHoveredMsgId(null)}
+                          >
                             <div className={`max-w-[70%] flex flex-col gap-0.5 ${isAdmin ? 'items-end' : 'items-start'}`}>
-                              <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${isAdmin
-                                ? 'bg-foreground text-background rounded-br-sm'
-                                : 'bg-secondary text-foreground rounded-bl-sm border border-border'}`}>
-                                {m.content}
-                              </div>
-                              {showTime && (
+                              {canEdit && hoveredMsgId === m.id && !isEditing && (
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  <button onClick={() => { setEditingMsgId(m.id); setEditMsgText(m.content); }}
+                                    className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary border border-border">
+                                    <Pencil className="h-3 w-3" />
+                                  </button>
+                                  <button onClick={() => deleteAdminMsg(m.id)}
+                                    className="h-6 w-6 rounded flex items-center justify-center text-muted-foreground hover:text-red-400 hover:bg-red-500/10 border border-border">
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              )}
+                              {isEditing ? (
+                                <div className="flex flex-col gap-1.5 min-w-[180px]">
+                                  <textarea value={editMsgText} onChange={e => setEditMsgText(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveAdminEdit(m.id); } if (e.key === 'Escape') setEditingMsgId(null); }}
+                                    autoFocus rows={2}
+                                    className="w-full bg-input border border-ring rounded-xl px-3 py-2 text-sm resize-none focus:outline-none" />
+                                  <div className="flex gap-1.5 justify-end">
+                                    <button onClick={() => setEditingMsgId(null)} className="h-7 px-2.5 rounded-md border border-border text-xs text-muted-foreground hover:bg-secondary flex items-center gap-1">
+                                      <X className="h-3 w-3" /> Cancel
+                                    </button>
+                                    <button onClick={() => saveAdminEdit(m.id)} className="h-7 px-2.5 rounded-md bg-foreground text-background text-xs flex items-center gap-1 hover:bg-foreground/90">
+                                      <Check className="h-3 w-3" /> Save
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words ${isAdmin
+                                  ? 'bg-foreground text-background rounded-br-sm'
+                                  : 'bg-secondary text-foreground rounded-bl-sm border border-border'}`}>
+                                  {m.content}
+                                </div>
+                              )}
+                              {showTime && !isEditing && (
                                 <span className="text-[10px] text-muted-foreground font-mono px-1">
                                   {fmtMsg(m.created_at)}{isAdmin && m.read_at ? ' · Read' : ''}
                                 </span>

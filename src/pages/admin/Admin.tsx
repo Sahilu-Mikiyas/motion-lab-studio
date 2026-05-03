@@ -97,6 +97,228 @@ async function openFile(url: string) {
   window.open(finalUrl, '_blank');
 }
 
+async function callAdminFn(body: object) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch(`${(supabase as any).supabaseUrl}/functions/v1/admin-users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+
+function UserManagement({ users, activeUsers, updateOnboardingStatus, updateUserLevel, togglePaidStatus, reload, fmt }: any) {
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newName, setNewName] = useState('');
+  const [editUser, setEditUser] = useState<any | null>(null);
+  const [editEmail, setEditEmail] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  const createUser = async () => {
+    if (!newEmail || !newPassword) return;
+    setCreating(true);
+    const res = await callAdminFn({ action: 'create', email: newEmail, password: newPassword, full_name: newName });
+    if (res.error) { toast.error(res.error); }
+    else { toast.success(`Account created for ${newEmail}`); setShowCreate(false); setNewEmail(''); setNewPassword(''); setNewName(''); reload(); }
+    setCreating(false);
+  };
+
+  const deleteUser = async (userId: string, name: string) => {
+    const res = await callAdminFn({ action: 'delete', user_id: userId });
+    if (res.error) toast.error(res.error);
+    else { toast.success(`${name} deleted`); setConfirmDelete(null); reload(); }
+  };
+
+  const saveEdit = async () => {
+    if (!editUser) return;
+    setSaving(true);
+    if (editEmail && editEmail !== editUser.email) {
+      const r = await callAdminFn({ action: 'update_email', user_id: editUser.user_id, email: editEmail });
+      if (r.error) { toast.error(r.error); setSaving(false); return; }
+    }
+    if (editPassword) {
+      const r = await callAdminFn({ action: 'update_password', user_id: editUser.user_id, password: editPassword });
+      if (r.error) { toast.error(r.error); setSaving(false); return; }
+    }
+    toast.success('User updated');
+    setEditUser(null);
+    reload();
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">{users.length} accounts · {activeUsers} active trainees</div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-1.5 bg-foreground text-background text-xs px-4 py-2 rounded-md hover:bg-foreground/90"
+        >
+          <Users className="h-3.5 w-3.5" /> Create account
+        </button>
+      </div>
+
+      {/* Create modal */}
+      {showCreate && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-background border border-border rounded-lg w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-xl">Create account</h2>
+              <button onClick={() => setShowCreate(false)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Full name</label>
+                <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. John Doe"
+                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring" />
+              </div>
+              <div>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Email</label>
+                <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="user@example.com"
+                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring" />
+              </div>
+              <div>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">Password</label>
+                <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Min 8 characters"
+                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring" />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setShowCreate(false)} className="flex-1 border border-border rounded-md py-2 text-sm text-muted-foreground hover:bg-secondary">Cancel</button>
+              <button onClick={createUser} disabled={creating || !newEmail || !newPassword}
+                className="flex-1 bg-foreground text-background rounded-md py-2 text-sm hover:bg-foreground/90 disabled:opacity-40">
+                {creating ? 'Creating…' : 'Create'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit modal */}
+      {editUser && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-background border border-border rounded-lg w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-display text-xl">Edit account</h2>
+              <button onClick={() => setEditUser(null)} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+            </div>
+            <p className="text-xs text-muted-foreground font-mono">{editUser.full_name || editUser.display_name || editUser.email}</p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">New email (leave blank to keep)</label>
+                <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder={editUser.email}
+                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring" />
+              </div>
+              <div>
+                <label className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground block mb-1">New password (leave blank to keep)</label>
+                <input type="password" value={editPassword} onChange={e => setEditPassword(e.target.value)} placeholder="Min 8 characters"
+                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring" />
+              </div>
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setEditUser(null)} className="flex-1 border border-border rounded-md py-2 text-sm text-muted-foreground hover:bg-secondary">Cancel</button>
+              <button onClick={saveEdit} disabled={saving || (!editEmail && !editPassword)}
+                className="flex-1 bg-foreground text-background rounded-md py-2 text-sm hover:bg-foreground/90 disabled:opacity-40">
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirm modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-background border border-border rounded-lg w-full max-w-sm p-6 space-y-4">
+            <h2 className="font-display text-xl text-red-400">Delete account?</h2>
+            <p className="text-sm text-muted-foreground">This will permanently delete the user and all their data. This cannot be undone.</p>
+            <div className="flex gap-2">
+              <button onClick={() => setConfirmDelete(null)} className="flex-1 border border-border rounded-md py-2 text-sm text-muted-foreground hover:bg-secondary">Cancel</button>
+              <button
+                onClick={() => { const u = users.find((u: any) => u.user_id === confirmDelete); deleteUser(confirmDelete, u?.full_name || u?.email || 'User'); }}
+                className="flex-1 bg-red-500/10 text-red-400 border border-red-500/30 rounded-md py-2 text-sm hover:bg-red-500/20"
+              >
+                Delete permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="border border-border rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left bg-secondary/20">
+                <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Name</th>
+                <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Email</th>
+                <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Status</th>
+                <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Level</th>
+                <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Paid</th>
+                <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Joined</th>
+                <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {users.map((u: any) => (
+                <tr key={u.id} className="hover:bg-secondary/20">
+                  <td className="px-5 py-3 font-medium">{u.full_name || u.display_name || '—'}</td>
+                  <td className="px-5 py-3 text-muted-foreground text-xs font-mono">{u.email}</td>
+                  <td className="px-5 py-3">
+                    <select defaultValue={u.onboarding_status} onChange={e => updateOnboardingStatus(u.user_id, e.target.value)}
+                      className="bg-input border border-border rounded px-2 py-1 text-xs font-mono">
+                      {['not_started','application_submitted','under_review','legal_pending','approved','complete','rejected'].map(s => (
+                        <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="px-5 py-3">
+                    <input type="number" min="0" max="10" id={`ulvl-${u.id}`} defaultValue={u.assigned_level}
+                      className="w-14 bg-input border border-border rounded px-2 py-1 text-xs" />
+                  </td>
+                  <td className="px-5 py-3">
+                    <button onClick={() => togglePaidStatus(u.user_id, u.paid_status)}
+                      className={`text-[10px] font-mono px-2.5 py-1 rounded-full border ${u.paid_status ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-muted-foreground border-border hover:bg-secondary'}`}>
+                      {u.paid_status ? 'Yes' : 'No'}
+                    </button>
+                  </td>
+                  <td className="px-5 py-3 text-xs text-muted-foreground font-mono">{fmt(u.created_at)}</td>
+                  <td className="px-5 py-3">
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => updateUserLevel(u.user_id, Number((document.getElementById(`ulvl-${u.id}`) as HTMLInputElement)?.value || 0))}
+                        className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2">
+                        Save level
+                      </button>
+                      <button onClick={() => { setEditUser(u); setEditEmail(''); setEditPassword(''); }}
+                        className="h-7 w-7 rounded border border-border flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary"
+                        title="Edit credentials">
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                      <button onClick={() => setConfirmDelete(u.user_id)}
+                        className="h-7 w-7 rounded border border-border flex items-center justify-center text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+                        title="Delete account">
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {users.length === 0 && (
+                <tr><td colSpan={7} className="px-5 py-6 text-sm text-muted-foreground">No users yet.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Admin() {
   const { signOut } = useAuth();
   const [tab, setTab] = useState<Tab>('overview');
@@ -940,73 +1162,15 @@ export default function Admin() {
 
           {/* ── USERS ── */}
           {tab === 'users' && (
-            <div className="space-y-4">
-              <div className="text-sm text-muted-foreground">{users.length} accounts · {activeUsers} active trainees</div>
-              <div className="border border-border rounded-lg overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border text-left bg-secondary/20">
-                        <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Name</th>
-                        <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Email</th>
-                        <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Status</th>
-                        <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Level</th>
-                        <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Paid</th>
-                        <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Joined</th>
-                        <th className="px-5 py-3 text-[10px] font-mono uppercase tracking-widest text-muted-foreground font-normal">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {users.map(u => (
-                        <tr key={u.id} className="hover:bg-secondary/20">
-                          <td className="px-5 py-3 font-medium">{u.full_name || u.display_name || '—'}</td>
-                          <td className="px-5 py-3 text-muted-foreground text-xs font-mono">{u.email}</td>
-                          <td className="px-5 py-3">
-                            <select
-                              defaultValue={u.onboarding_status}
-                              onChange={e => updateOnboardingStatus(u.user_id, e.target.value)}
-                              className="bg-input border border-border rounded px-2 py-1 text-xs font-mono"
-                            >
-                              {['not_started','application_submitted','under_review','legal_pending','approved','complete','rejected'].map(s => (
-                                <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
-                              ))}
-                            </select>
-                          </td>
-                          <td className="px-5 py-3">
-                            <input
-                              type="number" min="0" max="10"
-                              id={`ulvl-${u.id}`}
-                              defaultValue={u.assigned_level}
-                              className="w-14 bg-input border border-border rounded px-2 py-1 text-xs"
-                            />
-                          </td>
-                          <td className="px-5 py-3">
-                            <button
-                              onClick={() => togglePaidStatus(u.user_id, u.paid_status)}
-                              className={`text-[10px] font-mono px-2.5 py-1 rounded-full border ${u.paid_status ? 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' : 'text-muted-foreground border-border hover:bg-secondary'}`}
-                            >
-                              {u.paid_status ? 'Yes' : 'No'}
-                            </button>
-                          </td>
-                          <td className="px-5 py-3 text-xs text-muted-foreground font-mono">{fmt(u.created_at)}</td>
-                          <td className="px-5 py-3">
-                            <button
-                              onClick={() => updateUserLevel(u.user_id, Number((document.getElementById(`ulvl-${u.id}`) as HTMLInputElement)?.value || 0))}
-                              className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
-                            >
-                              Save level
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {users.length === 0 && (
-                        <tr><td colSpan={7} className="px-5 py-6 text-sm text-muted-foreground">No users yet.</td></tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
+            <UserManagement
+              users={users}
+              activeUsers={activeUsers}
+              updateOnboardingStatus={updateOnboardingStatus}
+              updateUserLevel={updateUserLevel}
+              togglePaidStatus={togglePaidStatus}
+              reload={load}
+              fmt={fmt}
+            />
           )}
 
           {/* ── FILES ── */}

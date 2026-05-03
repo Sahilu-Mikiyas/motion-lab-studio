@@ -6,7 +6,7 @@ import {
   Users, FileText, CheckSquare, BookOpen, LayoutDashboard,
   ChevronDown, ChevronUp, ExternalLink, AlertCircle, LogOut,
   CheckCircle, XCircle, RefreshCw, DollarSign, Eye, Activity,
-  TrendingUp, Clock, UserCheck, Folder, Download, MessageSquare, Send, Bell, Pencil, Trash2, Check, X,
+  TrendingUp, Clock, UserCheck, Folder, Download, MessageSquare, Send, Bell, Pencil, Trash2, Check, X, Paperclip,
 } from 'lucide-react';
 import logo from '@/assets/furii-logo.png';
 import { useNotifications } from '@/hooks/useNotifications';
@@ -221,8 +221,14 @@ export default function Admin() {
   const [hoveredMsgId, setHoveredMsgId] = useState<string | null>(null);
   const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
   const [editMsgText, setEditMsgText] = useState('');
+  const [adminUploading, setAdminUploading] = useState(false);
+  const adminFileRef = useRef<HTMLInputElement>(null);
   const chatBottomRef = useRef<HTMLDivElement>(null);
 
+  const IMG_PREFIX = '__img__:';
+  const MAX_BYTES = 500 * 1024;
+  const isImgMsg = (content: string) => content.startsWith(IMG_PREFIX);
+  const imgUrl = (content: string) => content.slice(IMG_PREFIX.length);
   const isWithin24h = (created_at: string) =>
     Date.now() - new Date(created_at).getTime() < 24 * 60 * 60 * 1000;
 
@@ -234,8 +240,34 @@ export default function Admin() {
   };
 
   const deleteAdminMsg = async (id: string) => {
+    const msg = convoMessages.find(m => m.id === id);
+    if (msg && isImgMsg(msg.content)) {
+      const path = imgUrl(msg.content).split('/chat-media/')[1];
+      if (path) await supabase.storage.from('chat-media').remove([path]);
+    }
     await supabase.from('messages').delete().eq('id', id);
     setConvoMessages(prev => prev.filter(m => m.id !== id));
+  };
+
+  const handleAdminFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !adminUser || !activeConvo) return;
+    e.target.value = '';
+    if (!file.type.startsWith('image/')) { toast.error('Only image files are supported.'); return; }
+    if (file.size > MAX_BYTES) {
+      toast.error(`Image too large (${(file.size / 1024).toFixed(0)} KB). Please upload an image under 500 KB.`);
+      return;
+    }
+    setAdminUploading(true);
+    const ext = file.name.split('.').pop();
+    const path = `${adminUser.id}/${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('chat-media').upload(path, file, { upsert: false });
+    if (upErr) { toast.error('Upload failed: ' + upErr.message); setAdminUploading(false); return; }
+    const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(path);
+    const content = IMG_PREFIX + urlData.publicUrl;
+    const { error: msgErr } = await supabase.from('messages').insert({ sender_id: adminUser.id, recipient_id: activeConvo, content });
+    if (msgErr) toast.error(msgErr.message);
+    setAdminUploading(false);
   };
   const [notifOpen, setNotifOpen] = useState(false);
   const notifRef = useRef<HTMLDivElement>(null);
@@ -656,6 +688,10 @@ export default function Admin() {
                                     </button>
                                   </div>
                                 </div>
+                              ) : isImgMsg(m.content) ? (
+                                <div className={`rounded-2xl overflow-hidden p-1 ${isAdmin ? 'bg-foreground rounded-br-sm' : 'bg-secondary border border-border rounded-bl-sm'}`}>
+                                  <img src={imgUrl(m.content)} alt="shared" className="max-w-[220px] max-h-[260px] rounded-xl object-cover" />
+                                </div>
                               ) : (
                                 <div className={`px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap break-words ${isAdmin
                                   ? 'bg-foreground text-background rounded-br-sm'
@@ -678,6 +714,15 @@ export default function Admin() {
                     {/* Input */}
                     <div className="px-5 py-3 border-t border-border shrink-0">
                       <div className="flex items-end gap-2">
+                        <input ref={adminFileRef} type="file" accept="image/*" className="hidden" onChange={handleAdminFileChange} />
+                        <button
+                          onClick={() => adminFileRef.current?.click()}
+                          disabled={adminUploading}
+                          className="h-9 w-9 rounded-xl border border-border grid place-items-center text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-40 shrink-0"
+                          title="Send image (max 500 KB)"
+                        >
+                          {adminUploading ? <Download className="h-4 w-4 animate-pulse" /> : <Paperclip className="h-4 w-4" />}
+                        </button>
                         <textarea
                           value={msgInput}
                           onChange={e => setMsgInput(e.target.value)}
@@ -699,6 +744,7 @@ export default function Admin() {
                           <Send className="h-4 w-4" />
                         </button>
                       </div>
+                      <p className="text-[10px] text-muted-foreground mt-1 font-mono">Images up to 500 KB</p>
                     </div>
                   </>
                 )}
